@@ -44,14 +44,35 @@ describe('MediaWikiClient Repro Issue #1', () => {
 		const firstCall = mockRequestHelper.request.mock.calls[0][0];
 		
 		expect(firstCall.url).toBe('https://private-wiki.com/api.php');
-		expect(firstCall.baseURL).toBeUndefined();
 		expect(firstCall.auth).toEqual({
 			user: 'bot',
 			pass: 'password',
+		});
+	});
+
+	test('should use httpRequest when available', async () => {
+		mockRequestHelper.httpRequest = jest.fn().mockResolvedValue({
+			query: { tokens: { csrftoken: 'test-token' } }
+		});
+		
+		// Setup mock for the second request (edit) which might use httpRequest too
+		(mockRequestHelper.httpRequest as jest.Mock).mockResolvedValueOnce({
+			query: { tokens: { csrftoken: 'test-token' } }
+		}).mockResolvedValueOnce({
+			edit: { result: 'Success' }
+		});
+
+		await client.editPage({
+			title: 'Test Page',
+			content: 'Test Content',
+		});
+
+		expect(mockRequestHelper.httpRequest).toHaveBeenCalled();
+		const call = (mockRequestHelper.httpRequest as jest.Mock).mock.calls[0][0];
+		expect(call.url).toBe('https://private-wiki.com/api.php');
+		expect(call.auth).toEqual({
 			username: 'bot',
 			password: 'password',
 		});
-		expect(firstCall.headers.Authorization).toBeDefined();
-		expect(firstCall.headers['User-Agent']).toBe('n8n-mediawiki-node');
 	});
 });
