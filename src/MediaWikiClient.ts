@@ -31,8 +31,10 @@ export interface RequestHelper {
 export class MediaWikiClient {
 	private baseUrl: string;
 	private requestHelper: RequestHelper;
+	private credentials?: MediaWikiCredentials | undefined;
 
 	constructor(credentials: MediaWikiCredentials | undefined, requestHelper: RequestHelper) {
+		this.credentials = credentials;
 		const rawBaseUrl = credentials?.baseUrl || 'https://en.wikipedia.org';
 		// Normalize the base URL and handle cases where api.php is already included
 		if (rawBaseUrl.endsWith('/api.php')) {
@@ -43,6 +45,20 @@ export class MediaWikiClient {
 			this.baseUrl = rawBaseUrl.replace(/\/+$/, '');
 		}
 		this.requestHelper = requestHelper;
+	}
+
+	private async request(options: any): Promise<any> {
+		const requestOptions = { ...options };
+
+		// Add authentication if credentials are provided
+		if (this.credentials?.username && this.credentials?.password) {
+			requestOptions.auth = {
+				username: this.credentials.username,
+				password: this.credentials.password,
+			};
+		}
+
+		return this.requestHelper.request(requestOptions);
 	}
 
 	private getApiUrl(): string {
@@ -62,13 +78,8 @@ export class MediaWikiClient {
 		};
 	}
 
-	// Alternative URL construction method (now just uses main getApiUrl)
-	private getApiUrlAlternative(): string {
-		return this.getApiUrl();
-	}
-
 	async getPage(options: PageGetOptions): Promise<any> {
-		return this.requestHelper.request({
+		return this.request({
 			method: 'GET',
 			baseURL: this.baseUrl,
 			url: '/api.php',
@@ -91,7 +102,8 @@ export class MediaWikiClient {
 			// Try to get a CSRF token for authenticated editing
 			const requestOptions = {
 				method: 'GET',
-				url: this.getApiUrlAlternative(),
+				baseURL: this.baseUrl,
+				url: '/api.php',
 				qs: {
 					action: 'query',
 					meta: 'tokens',
@@ -100,7 +112,7 @@ export class MediaWikiClient {
 				json: true,
 			};
 			
-			const tokenResponse = await this.requestHelper.request(requestOptions);
+			const tokenResponse = await this.request(requestOptions);
 			
 			if (tokenResponse && tokenResponse.query && tokenResponse.query.tokens && tokenResponse.query.tokens.csrftoken) {
 				token = tokenResponse.query.tokens.csrftoken;
@@ -124,16 +136,17 @@ export class MediaWikiClient {
 
 		const editRequestOptions = {
 			method: 'POST',
-			url: this.getApiUrlAlternative(),
+			baseURL: this.baseUrl,
+			url: '/api.php',
 			form: formData,
 			json: true,
 		};
 		
-		return this.requestHelper.request(editRequestOptions);
+		return this.request(editRequestOptions);
 	}
 
 	async searchPages(options: SearchOptions): Promise<any> {
-		return this.requestHelper.request({
+		return this.request({
 			method: 'GET',
 			baseURL: this.baseUrl,
 			url: '/api.php',
@@ -156,7 +169,8 @@ export class MediaWikiClient {
 			// Try to get a CSRF token for authenticated deletion
 			const requestOptions = {
 				method: 'GET',
-				url: this.getApiUrlAlternative(),
+				baseURL: this.baseUrl,
+				url: '/api.php',
 				qs: {
 					action: 'query',
 					meta: 'tokens',
@@ -165,7 +179,7 @@ export class MediaWikiClient {
 				json: true,
 			};
 			
-			const tokenResponse = await this.requestHelper.request(requestOptions);
+			const tokenResponse = await this.request(requestOptions);
 			
 			if (tokenResponse && tokenResponse.query && tokenResponse.query.tokens && tokenResponse.query.tokens.csrftoken) {
 				token = tokenResponse.query.tokens.csrftoken;
@@ -188,16 +202,17 @@ export class MediaWikiClient {
 
 		const deleteRequestOptions = {
 			method: 'POST',
-			url: this.getApiUrlAlternative(),
+			baseURL: this.baseUrl,
+			url: '/api.php',
 			form: formData,
 			json: true,
 		};
 		
-		return this.requestHelper.request(deleteRequestOptions);
+		return this.request(deleteRequestOptions);
 	}
 
 	async getSiteInfo(): Promise<any> {
-		return this.requestHelper.request({
+		return this.request({
 			method: 'GET',
 			baseURL: this.baseUrl,
 			url: '/api.php',
