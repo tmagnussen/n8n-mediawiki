@@ -43,11 +43,15 @@ describe('MediaWikiClient Repro Issue #1', () => {
 		// Check the first call (token fetching)
 		const firstCall = mockRequestHelper.request.mock.calls[0][0];
 		
-		expect(firstCall.baseURL).toBe('https://private-wiki.com');
-		expect(firstCall.url).toBe('/api.php');
+		expect(firstCall.url).toBe('https://private-wiki.com/api.php');
+		expect(firstCall.baseURL).toBeUndefined();
 		expect(firstCall.auth).toEqual({
+			user: 'bot',
+			pass: 'password',
 			username: 'bot',
 			password: 'password',
 		});
+		expect(firstCall.headers.Authorization).toBeDefined();
+		expect(firstCall.headers['User-Agent']).toBe('n8n-mediawiki-node');
 	});
 });

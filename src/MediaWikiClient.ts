@@ -35,27 +35,52 @@ export class MediaWikiClient {
 
 	constructor(credentials: MediaWikiCredentials | undefined, requestHelper: RequestHelper) {
 		this.credentials = credentials;
-		const rawBaseUrl = credentials?.baseUrl || 'https://en.wikipedia.org';
-		// Normalize the base URL and handle cases where api.php is already included
+		let rawBaseUrl = credentials?.baseUrl || 'https://en.wikipedia.org';
+		
+		// Normalize base URL: remove trailing slashes and /api.php if present
+		rawBaseUrl = rawBaseUrl.replace(/\/+$/, '');
 		if (rawBaseUrl.endsWith('/api.php')) {
-			// If the base URL already includes api.php, use it as-is but remove trailing slashes
-			this.baseUrl = rawBaseUrl.replace(/\/+$/, '');
-		} else {
-			// If the base URL doesn't include api.php, remove trailing slashes
-			this.baseUrl = rawBaseUrl.replace(/\/+$/, '');
+			rawBaseUrl = rawBaseUrl.substring(0, rawBaseUrl.length - 8);
 		}
+		this.baseUrl = rawBaseUrl.replace(/\/+$/, '');
+		
 		this.requestHelper = requestHelper;
 	}
 
 	private async request(options: any): Promise<any> {
 		const requestOptions = { ...options };
 
+		// Ensure we use the full URL to avoid baseURL/url combination issues in different n8n versions
+		if (!requestOptions.url.startsWith('http')) {
+			const path = requestOptions.url.startsWith('/') ? requestOptions.url : `/${requestOptions.url}`;
+			requestOptions.url = `${this.baseUrl}${path}`;
+			delete requestOptions.baseURL;
+		}
+
 		// Add authentication if credentials are provided
 		if (this.credentials?.username && this.credentials?.password) {
+			// Provide both for maximum compatibility with different n8n request helper versions
 			requestOptions.auth = {
+				user: this.credentials.username,
+				pass: this.credentials.password,
 				username: this.credentials.username,
 				password: this.credentials.password,
 			};
+
+			// Also inject explicit Authorization header as a fallback
+			if (!requestOptions.headers) {
+				requestOptions.headers = {};
+			}
+			const auth = Buffer.from(`${this.credentials.username}:${this.credentials.password}`).toString('base64');
+			requestOptions.headers['Authorization'] = `Basic ${auth}`;
+		}
+
+		// Add a standard User-Agent
+		if (!requestOptions.headers) {
+			requestOptions.headers = {};
+		}
+		if (!requestOptions.headers['User-Agent']) {
+			requestOptions.headers['User-Agent'] = 'n8n-mediawiki-node';
 		}
 
 		return this.requestHelper.request(requestOptions);
