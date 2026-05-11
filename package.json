@@ -1,24 +1,23 @@
 {
-  "name": "n8n-nodes-mediawiki",
-  "version": "0.2.0",
-  "description": "n8n community node for MediaWiki integration",
+  "name": "n8n-nodes-mediawiki-tmagnussen",
+  "version": "0.2.1",
+  "description": "n8n community node for MediaWiki integration (Fork with private wiki fix)",
   "keywords": [
     "n8n-community-node-package",
     "mediawiki",
     "wiki"
   ],
   "license": "MIT",
-  "homepage": "https://github.com/matheusfillipe/n8n-mediawiki",
+  "homepage": "https://github.com/tmagnussen/n8n-mediawiki",
   "author": {
-    "name": "matheusfillipe",
-    "email": "mattf@h4ks.com"
+    "name": "tmagnussen"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/matheusfillipe/n8n-mediawiki"
+    "url": "git+https://github.com/tmagnussen/n8n-mediawiki.git"
   },
   "bugs": {
-    "url": "https://github.com/matheusfillipe/n8n-mediawiki/issues"
+    "url": "https://github.com/tmagnussen/n8n-mediawiki/issues"
   },
   "engines": {
     "node": ">=18.10",
