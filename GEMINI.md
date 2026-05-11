@@ -10,10 +10,13 @@ This project is a fork of `n8n-nodes-mediawiki`, customized to fix authenticatio
 
 ## 🔧 Fixes & Improvements
 
-### Private Wiki Authentication (Issue #1)
-- **Problem**: The original node attempted to fetch CSRF tokens anonymously before authenticating, leading to `readapidenied` errors on private wikis.
-- **Solution**: Refactored `MediaWikiClient.ts` to store credentials and use them for **all** requests, including the initial token-fetching calls.
-- **Implementation**: Consolidated request logic into a private `request()` helper that injects Basic Auth headers automatically.
+### Private Wiki Authentication & Session Persistence (Issue #1)
+- **Problem**: Private MediaWiki instances often require a stateful session (cookies) and a formal login flow even when using credentials. Previous attempts using only Basic Auth or stateless token requests were blocked.
+- **Solution**: 
+  - **Explicit Login Flow**: Implemented a two-step `action=login` process at the start of node execution.
+  - **Session Persistence**: Added an internal cookie jar to capture and re-send `set-cookie` headers across all API calls.
+  - **Robust Request Handling**: Switched to n8n's native `httpRequest` helper for better connection management and explicitly handled URL-encoding for POST bodies.
+- **Implementation**: Managed within the `MediaWikiClient.ts` class, which handles the orchestration of login, token retrieval, and authenticated operations.
 
 ## 🛠 Building and Running
 
