@@ -33,6 +33,7 @@ export class MediaWikiClient {
 	private baseUrl: string;
 	private requestHelper: RequestHelper;
 	private credentials?: MediaWikiCredentials | undefined;
+	private cookieJar: string[] = [];
 
 	constructor(credentials: MediaWikiCredentials | undefined, requestHelper: RequestHelper) {
 		this.credentials = credentials;
@@ -46,6 +47,25 @@ export class MediaWikiClient {
 		this.baseUrl = rawBaseUrl.replace(/\/+$/, '');
 		
 		this.requestHelper = requestHelper;
+	}
+
+	private extractCookies(headers: any) {
+		const setCookie = headers['set-cookie'] || headers['Set-Cookie'] || headers['set-cookie[]'];
+		if (setCookie) {
+			const cookies = Array.isArray(setCookie) ? setCookie : [setCookie];
+			for (const cookie of cookies) {
+				const cookiePart = cookie.split(';')[0].trim();
+				if (cookiePart && cookiePart.includes('=')) {
+					const name = cookiePart.split('=')[0];
+					const index = this.cookieJar.findIndex(c => c.startsWith(name + '='));
+					if (index !== -1) {
+						this.cookieJar[index] = cookiePart;
+					} else {
+						this.cookieJar.push(cookiePart);
+					}
+				}
+			}
+		}
 	}
 
 	private async request(options: any): Promise<any> {
@@ -64,6 +84,11 @@ export class MediaWikiClient {
 			...requestOptions.headers,
 		};
 
+		// Add cookies from jar
+		if (this.cookieJar.length > 0) {
+			headers['Cookie'] = this.cookieJar.join('; ');
+		}
+
 		// Add authentication header manually for maximum reliability (Basic Auth)
 		if (this.credentials?.username && this.credentials?.password) {
 			const auth = Buffer.from(`${this.credentials.username}:${this.credentials.password}`).toString('base64');
@@ -77,12 +102,13 @@ export class MediaWikiClient {
 				url: requestOptions.url,
 				headers,
 				json: true,
+				returnFullResponse: true,
 			};
 
 			if (requestOptions.qs) httpOptions.qs = requestOptions.qs;
 			
 			if (requestOptions.form) {
-				// Manually encode form data as URL search parameters
+				// Manually encode form data as URL search parameters for POST requests
 				const params = new URLSearchParams();
 				for (const [key, value] of Object.entries(requestOptions.form)) {
 					if (value !== undefined && value !== null) {
@@ -91,25 +117,45 @@ export class MediaWikiClient {
 				}
 				httpOptions.body = params.toString();
 				httpOptions.headers['Content-Type'] = 'application/x-www-form-urlencoded';
-				// Set json to false because we are sending a raw string body
 				httpOptions.json = false;
 			} else if (requestOptions.body) {
 				httpOptions.body = requestOptions.body;
 			}
 
+			// Add authentication if credentials are provided
+			if (this.credentials?.username && this.credentials?.password) {
+				httpOptions.auth = {
+					username: this.credentials.username,
+					password: this.credentials.password,
+				};
+			}
+
 			try {
-				let response = await this.requestHelper.httpRequest(httpOptions);
+				const response = await this.requestHelper.httpRequest(httpOptions);
 				
-				// If we disabled json auto-parsing, we might need to parse it ourselves
-				if (typeof response === 'string' && response.trim().startsWith('{')) {
+				// Extract headers and body
+				const responseHeaders = response.headers || {};
+				let responseBody = response.body;
+				
+				// Parse cookies
+				this.extractCookies(responseHeaders);
+				
+				// Handle JSON parsing if we disabled auto-parsing
+				if (typeof responseBody === 'string' && responseBody.trim().startsWith('{')) {
 					try {
-						response = JSON.parse(response);
+						responseBody = JSON.parse(responseBody);
 					} catch (e) {
 						// Not valid JSON, return as is
 					}
 				}
 				
-				return response;
+				// Check for MediaWiki API errors in the body
+				if (responseBody && responseBody.error) {
+					const apiError = responseBody.error;
+					throw new Error(`MediaWiki API Error: ${apiError.code} - ${apiError.info}`);
+				}
+				
+				return responseBody;
 			} catch (error: any) {
 				// Re-throw with more context if possible
 				if (error.response && error.response.data) {
@@ -134,6 +180,47 @@ export class MediaWikiClient {
 		requestOptions.headers = headers;
 
 		return this.requestHelper.request(requestOptions);
+	}
+
+	async login(): Promise<any> {
+		if (!this.credentials?.username || !this.credentials?.password) {
+			return null;
+		}
+
+		try {
+			// 1. Get login token
+			const tokenRes = await this.request({
+				method: 'GET',
+				url: '/api.php',
+				qs: {
+					action: 'query',
+					meta: 'tokens',
+					type: 'login',
+					format: 'json',
+				},
+			});
+
+			const loginToken = tokenRes?.query?.tokens?.logintoken;
+			if (!loginToken) {
+				throw new Error('Failed to retrieve login token');
+			}
+
+			// 2. Login
+			return await this.request({
+				method: 'POST',
+				url: '/api.php',
+				form: {
+					action: 'login',
+					lgname: this.credentials.username,
+					lgpassword: this.credentials.password,
+					lgtoken: loginToken,
+					format: 'json',
+				},
+			});
+		} catch (error: any) {
+			console.warn('MediaWiki login failed, attempting to continue with Basic Auth only:', error.message);
+			return null;
+		}
 	}
 
 	async getPage(options: PageGetOptions): Promise<any> {

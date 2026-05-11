@@ -164,6 +164,12 @@ export class MediaWikiPage implements INodeType {
         const credentials = await this.getCredentials('mediaWikiApi')
 
         const client = new MediaWikiClient(credentials, this.helpers)
+        
+        // Ensure we are logged in if credentials are provided
+        if (credentials && credentials.username && credentials.password) {
+          await client.login();
+        }
+
         let response
         let processedContent: string = pageContent
 

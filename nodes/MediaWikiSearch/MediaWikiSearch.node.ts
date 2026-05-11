@@ -54,6 +54,12 @@ export class MediaWikiSearch implements INodeType {
         const limit = this.getNodeParameter('limit', i) as number
         const credentials = await this.getCredentials('mediaWikiApi')
         const client = new MediaWikiClient(credentials, this.helpers)
+        
+        // Ensure we are logged in if credentials are provided
+        if (credentials && credentials.username && credentials.password) {
+          await client.login();
+        }
+
         const response = await client.searchPages({ query: searchTerm, limit })
 
         out.push({ json: { success: true, searchTerm, limit, response } })
