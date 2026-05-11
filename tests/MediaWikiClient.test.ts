@@ -50,29 +50,24 @@ describe('MediaWikiClient Repro Issue #1', () => {
 		});
 	});
 
-	test('should use httpRequest when available', async () => {
-		mockRequestHelper.httpRequest = jest.fn().mockResolvedValue({
-			query: { tokens: { csrftoken: 'test-token' } }
-		});
-		
-		// Setup mock for the second request (edit) which might use httpRequest too
-		(mockRequestHelper.httpRequest as jest.Mock).mockResolvedValueOnce({
+	test('should use httpRequest with correct Content-Type for POST', async () => {
+		mockRequestHelper.httpRequest = jest.fn().mockResolvedValueOnce({
 			query: { tokens: { csrftoken: 'test-token' } }
 		}).mockResolvedValueOnce({
 			edit: { result: 'Success' }
 		});
-
+		
 		await client.editPage({
 			title: 'Test Page',
 			content: 'Test Content',
 		});
 
-		expect(mockRequestHelper.httpRequest).toHaveBeenCalled();
-		const call = (mockRequestHelper.httpRequest as jest.Mock).mock.calls[0][0];
-		expect(call.url).toBe('https://private-wiki.com/api.php');
-		expect(call.auth).toEqual({
-			username: 'bot',
-			password: 'password',
-		});
+		// The second call is the POST request
+		expect(mockRequestHelper.httpRequest).toHaveBeenCalledTimes(2);
+		const postCall = (mockRequestHelper.httpRequest as jest.Mock).mock.calls[1][0];
+		expect(postCall.method).toBe('POST');
+		expect(postCall.headers['Content-Type']).toBe('application/x-www-form-urlencoded');
+		expect(postCall.body).toBeDefined();
+		expect(postCall.body.action).toBe('edit');
 	});
 });

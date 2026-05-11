@@ -71,8 +71,20 @@ export class MediaWikiClient {
 			};
 
 			if (requestOptions.qs) httpOptions.qs = requestOptions.qs;
-			if (requestOptions.form) httpOptions.form = requestOptions.form;
-			if (requestOptions.body) httpOptions.body = requestOptions.body;
+			
+			if (requestOptions.form) {
+				httpOptions.body = requestOptions.form;
+				// n8n's httpRequest uses the 'body' property for both JSON and form data
+				// but we must specify the content type for form data
+				httpOptions.headers['Content-Type'] = 'application/x-www-form-urlencoded';
+				// When using application/x-www-form-urlencoded in n8n's httpRequest, 
+				// we often need to set 'json: false' if we are passing a string or use specific n8n logic.
+				// However, MediaWiki expects standard form encoding.
+			}
+			
+			if (requestOptions.body && !httpOptions.headers['Content-Type']) {
+				httpOptions.body = requestOptions.body;
+			}
 
 			// Add authentication if credentials are provided
 			if (this.credentials?.username && this.credentials?.password) {
@@ -102,6 +114,14 @@ export class MediaWikiClient {
 				user: this.credentials.username,
 				pass: this.credentials.password,
 			};
+		}
+
+		// Ensure Content-Type is set for POST requests even in fallback
+		if (requestOptions.method === 'POST' && (requestOptions.form || requestOptions.body)) {
+			if (!requestOptions.headers) requestOptions.headers = {};
+			if (!requestOptions.headers['Content-Type']) {
+				requestOptions.headers['Content-Type'] = 'application/x-www-form-urlencoded';
+			}
 		}
 
 		return this.requestHelper.request(requestOptions);
