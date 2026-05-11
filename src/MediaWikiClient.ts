@@ -58,44 +58,58 @@ export class MediaWikiClient {
 			delete requestOptions.baseURL;
 		}
 
+		// Prepare headers
+		const headers: any = {
+			'User-Agent': 'n8n-mediawiki-node',
+			...requestOptions.headers,
+		};
+
+		// Add authentication header manually for maximum reliability (Basic Auth)
+		if (this.credentials?.username && this.credentials?.password) {
+			const auth = Buffer.from(`${this.credentials.username}:${this.credentials.password}`).toString('base64');
+			headers['Authorization'] = `Basic ${auth}`;
+		}
+
 		// Use httpRequest if available (preferred in modern n8n)
 		if (this.requestHelper.httpRequest) {
 			const httpOptions: any = {
 				method: requestOptions.method,
 				url: requestOptions.url,
-				headers: {
-					'User-Agent': 'n8n-mediawiki-node',
-					...requestOptions.headers,
-				},
+				headers,
 				json: true,
 			};
 
 			if (requestOptions.qs) httpOptions.qs = requestOptions.qs;
 			
 			if (requestOptions.form) {
-				httpOptions.body = requestOptions.form;
-				// n8n's httpRequest uses the 'body' property for both JSON and form data
-				// but we must specify the content type for form data
+				// Manually encode form data as URL search parameters
+				const params = new URLSearchParams();
+				for (const [key, value] of Object.entries(requestOptions.form)) {
+					if (value !== undefined && value !== null) {
+						params.append(key, String(value));
+					}
+				}
+				httpOptions.body = params.toString();
 				httpOptions.headers['Content-Type'] = 'application/x-www-form-urlencoded';
-				// When using application/x-www-form-urlencoded in n8n's httpRequest, 
-				// we often need to set 'json: false' if we are passing a string or use specific n8n logic.
-				// However, MediaWiki expects standard form encoding.
-			}
-			
-			if (requestOptions.body && !httpOptions.headers['Content-Type']) {
+				// Set json to false because we are sending a raw string body
+				httpOptions.json = false;
+			} else if (requestOptions.body) {
 				httpOptions.body = requestOptions.body;
 			}
 
-			// Add authentication if credentials are provided
-			if (this.credentials?.username && this.credentials?.password) {
-				httpOptions.auth = {
-					username: this.credentials.username,
-					password: this.credentials.password,
-				};
-			}
-
 			try {
-				return await this.requestHelper.httpRequest(httpOptions);
+				let response = await this.requestHelper.httpRequest(httpOptions);
+				
+				// If we disabled json auto-parsing, we might need to parse it ourselves
+				if (typeof response === 'string' && response.trim().startsWith('{')) {
+					try {
+						response = JSON.parse(response);
+					} catch (e) {
+						// Not valid JSON, return as is
+					}
+				}
+				
+				return response;
 			} catch (error: any) {
 				// Re-throw with more context if possible
 				if (error.response && error.response.data) {
@@ -115,14 +129,9 @@ export class MediaWikiClient {
 				pass: this.credentials.password,
 			};
 		}
-
-		// Ensure Content-Type is set for POST requests even in fallback
-		if (requestOptions.method === 'POST' && (requestOptions.form || requestOptions.body)) {
-			if (!requestOptions.headers) requestOptions.headers = {};
-			if (!requestOptions.headers['Content-Type']) {
-				requestOptions.headers['Content-Type'] = 'application/x-www-form-urlencoded';
-			}
-		}
+		
+		// Ensure headers are passed to fallback
+		requestOptions.headers = headers;
 
 		return this.requestHelper.request(requestOptions);
 	}
@@ -153,6 +162,7 @@ export class MediaWikiClient {
 				qs: {
 					action: 'query',
 					meta: 'tokens',
+					type: 'csrf',
 					format: 'json',
 				},
 			};
@@ -212,6 +222,7 @@ export class MediaWikiClient {
 				qs: {
 					action: 'query',
 					meta: 'tokens',
+					type: 'csrf',
 					format: 'json',
 				},
 			};
